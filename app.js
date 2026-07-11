@@ -762,6 +762,12 @@ function renderDynamicSections(){
     </div>`;
 }
 
+function escapeHtml(str){
+  const div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
+}
+
 // En carregar la pàgina, si l'URL porta un ?sala=CODI (enllaç compartit),
 // hi entrem directament sense passar per la pantalla d'introduir el codi.
 async function init(){
