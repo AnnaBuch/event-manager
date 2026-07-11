@@ -50,9 +50,13 @@ let state = {
   editingExpenseId: null,
   saving: false,
   connected: true,
+  closed: false,
+  expensesAccordionOpen: false,
+  participantsAccordionOpen: true,
 };
 let unsubParticipants = null;
 let unsubExpenses = null;
+let unsubEventMeta = null;
 
 function euros(n){
   return (n||0).toLocaleString('ca-ES',{minimumFractionDigits:2,maximumFractionDigits:2}) + ' €';
@@ -70,7 +74,9 @@ function icon(name, color, size){
     x: `<line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>`,
     party: `<path d="M5.8 11.3 2 22l10.7-3.79"/><path d="M4 3h.01"/><path d="M22 8h.01"/><path d="M15 2h.01"/><path d="M22 20h.01"/><path d="m22 2-2.24.75a2.9 2.9 0 0 0-1.96 3.12c.1.86-.57 1.63-1.45 1.63h-.38c-.86 0-1.6.6-1.76 1.44L14 10"/><path d="m22 13-1.16-.58a2 2 0 0 0-1.8 0L17 13"/><path d="m11 2 .58 1.15a2 2 0 0 0 1.8 1.02l1.62-.4"/><path d="M22 13a17.5 17.5 0 0 0-10 5"/>`,
     pencil: `<path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4Z"/>`,
-    receipt: `<path d="M4 2h16v20l-3-2-3 2-3-2-3 2-3-2-1 2z"/><path d="M8 7h8M8 11h8M8 15h5"/>`
+    receipt: `<path d="M4 2h16v20l-3-2-3 2-3-2-3 2-3-2-1 2z"/><path d="M8 7h8M8 11h8M8 15h5"/>`,
+    chevron: `<polyline points="6 9 12 15 18 9"/>`,
+    lock: `<rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>`
   };
   return `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="${color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${icons[name]||''}</svg>`;
 }
@@ -146,6 +152,29 @@ function computeSettlement(participants, expenses){
     if (d.balanceCents>-0.5) di++;
   }
   return {transactions, totalCents, totalUnits, paidCents, owedCents};
+}
+
+/* -------------------------------------------------------------------------
+   Diàleg de confirmació genèric (per a accions que no es poden desfer
+   fàcilment, com eliminar una despesa o tancar la trobada)
+   ------------------------------------------------------------------------- */
+function showConfirmDialog({title, message, confirmLabel, cancelLabel, danger}, onConfirm){
+  const overlay = document.createElement('div');
+  overlay.className = 'confirm-overlay';
+  overlay.innerHTML = `
+    <div class="confirm-dialog">
+      <h3 class="font-display">${escapeHtml(title||'')}</h3>
+      <p>${escapeHtml(message||'')}</p>
+      <div class="confirm-actions">
+        <button class="btn-outline confirm-cancel-btn">${escapeHtml(cancelLabel||'Cancel·la')}</button>
+        <button class="btn-primary confirm-ok-btn ${danger?'btn-danger':''}">${escapeHtml(confirmLabel||'Confirma')}</button>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+  function close(){ overlay.remove(); }
+  overlay.addEventListener('click', e=>{ if (e.target===overlay) close(); });
+  overlay.querySelector('.confirm-cancel-btn').onclick = close;
+  overlay.querySelector('.confirm-ok-btn').onclick = ()=>{ close(); onConfirm(); };
 }
 
 /* ========================================================================= */
@@ -350,6 +379,19 @@ async function addParticipant(code, name, familySize){
 function subscribeToRoom(code){
   if (unsubParticipants) unsubParticipants();
   if (unsubExpenses) unsubExpenses();
+  if (unsubEventMeta) unsubEventMeta();
+  unsubEventMeta = db.collection('events').doc(code)
+    .onSnapshot(docSnap=>{
+      if (!docSnap.exists) return;
+      const data = docSnap.data();
+      const wasClosed = state.closed;
+      state.closed = !!data.closed;
+      state.eventName = data.name || state.eventName;
+      if (wasClosed !== state.closed){
+        state.expensesAccordionOpen = false;
+        if (state.screen === 'event') renderEvent();
+      }
+    });
   unsubParticipants = db.collection('events').doc(code).collection('participants')
     .orderBy('createdAt','asc')
     .onSnapshot(snapshot=>{
@@ -374,10 +416,11 @@ function subscribeToRoom(code){
 
 function renderEvent(){
   const shareUrl = buildShareUrl(state.code);
-  root.innerHTML = `
-    <div class="screen">
+
+  const headerHtml = `
       <div class="event-name-row">
         <h1 class="font-display">${escapeHtml(state.eventName)}</h1>
+        ${state.closed ? `<span class="closed-badge" title="La trobada està tancada">${icon('lock','#A8462F',13)} Tancada</span>` : ''}
       </div>
       <div class="code-bar">
         <div>
@@ -396,43 +439,113 @@ function renderEvent(){
         </div>
         <button id="copy-link-btn" class="btn-icon" title="Copia l'enllaç">${icon('copy','#1F3A3D',17)}</button>
       </div>
-      <p class="hint-text">Comparteix l'enllaç (per WhatsApp, per exemple) perquè tothom hi entri directament, sense haver de teclejar el codi.</p>
+      <p class="hint-text">Comparteix l'enllaç (per WhatsApp, per exemple) perquè tothom hi entri directament, sense haver de teclejar el codi.</p>`;
 
+  const participantsSectionHtml = `
       <div>
-        <div class="section-head">
+        <div class="section-head accordion-head" id="participants-section-head">
           <h2 class="font-display">Participants</h2>
+          <button id="participants-accordion-toggle" class="accordion-toggle-btn" title="Mostra o amaga els participants">${icon('chevron','#1F3A3D',18)}</button>
         </div>
         <div id="participants-list"></div>
         <div id="add-participant-container"></div>
-      </div>
+      </div>`;
 
+  const expensesSectionHtml = `
       <div>
-        <div class="section-head">
+        <div class="section-head ${state.closed ? 'accordion-head' : ''}" id="expenses-section-head">
           <h2 class="font-display">Despeses</h2>
+          ${state.closed ? `<button id="expenses-accordion-toggle" class="accordion-toggle-btn" title="Mostra o amaga les despeses">${icon('chevron','#1F3A3D',18)}</button>` : ''}
         </div>
-        <button id="add-expense-btn" class="btn-add-expense">${icon('plus','#FBF7EC',19)} Afegeix una despesa</button>
+        ${!state.closed ? `<button id="add-expense-btn" class="btn-add-expense">${icon('plus','#FBF7EC',19)} Afegeix una despesa</button>` : ''}
         <div id="expense-form-container"></div>
         <div id="expenses-list"></div>
-      </div>
+      </div>`;
 
+  const summarySettlementHtml = `
       <div id="summary-container"></div>
-      <div id="settlement-container"></div>
+      <div id="settlement-container"></div>`;
 
+  const closeReopenHtml = state.closed
+    ? `<button id="reopen-event-btn" class="btn-outline" style="border-color:var(--sage);color:var(--sage);">${icon('check','#4F7355',16)} Reobre la trobada</button>`
+    : `<button id="close-event-btn" class="btn-outline" style="border-color:var(--rust);color:var(--rust);">${icon('lock','#A8462F',16)} Tanca la trobada</button>`;
+
+  root.innerHTML = `
+    <div class="screen">
+      ${headerHtml}
+      ${state.closed ? summarySettlementHtml : ''}
+      ${participantsSectionHtml}
+      ${expensesSectionHtml}
+      ${!state.closed ? summarySettlementHtml : ''}
+      ${closeReopenHtml}
       <button id="leave-btn" class="btn-link" style="align-self:center;">Surt d'aquesta trobada</button>
     </div>`;
 
   document.getElementById('copy-btn').onclick = handleCopy;
   document.getElementById('copy-link-btn').onclick = ()=> handleCopyLink(shareUrl);
   document.getElementById('leave-btn').onclick = handleLeave;
-  document.getElementById('add-expense-btn').onclick = ()=>{
-    state.editingExpenseId = null;
-    state.showExpenseForm = true;
-    renderExpenseForm();
+
+  // Accordió de participants: sempre plegable, tant si la trobada està
+  // oberta com tancada.
+  const participantsHead = document.getElementById('participants-section-head');
+  const participantsToggleBtn = document.getElementById('participants-accordion-toggle');
+  const participantsListEl = document.getElementById('participants-list');
+  const addParticipantEl = document.getElementById('add-participant-container');
+  const applyParticipantsAccordionState = ()=>{
+    const open = state.participantsAccordionOpen;
+    participantsListEl.style.display = open ? '' : 'none';
+    if (addParticipantEl) addParticipantEl.style.display = open ? '' : 'none';
+    participantsToggleBtn.style.transform = open ? 'rotate(180deg)' : 'rotate(0deg)';
   };
+  applyParticipantsAccordionState();
+  participantsHead.onclick = ()=>{ state.participantsAccordionOpen = !state.participantsAccordionOpen; applyParticipantsAccordionState(); };
+
+  if (state.closed){
+    document.getElementById('reopen-event-btn').onclick = handleReopenEvent;
+    const head = document.getElementById('expenses-section-head');
+    const toggleBtn = document.getElementById('expenses-accordion-toggle');
+    const listEl = document.getElementById('expenses-list');
+    const applyAccordionState = ()=>{
+      listEl.style.display = state.expensesAccordionOpen ? '' : 'none';
+      toggleBtn.style.transform = state.expensesAccordionOpen ? 'rotate(180deg)' : 'rotate(0deg)';
+    };
+    applyAccordionState();
+    head.onclick = ()=>{ state.expensesAccordionOpen = !state.expensesAccordionOpen; applyAccordionState(); };
+  } else {
+    document.getElementById('close-event-btn').onclick = handleCloseEvent;
+    document.getElementById('add-expense-btn').onclick = ()=>{
+      state.editingExpenseId = null;
+      state.showExpenseForm = true;
+      renderExpenseForm();
+    };
+  }
 
   renderAddParticipantForm();
   renderExpenseForm();
   renderDynamicSections();
+}
+
+function handleCloseEvent(){
+  showConfirmDialog({
+    title: 'Tancar la trobada?',
+    message: "Es mostrarà el repartiment a dalt de tot i no es podran afegir ni editar despeses o participants fins que la reobris.",
+    confirmLabel: 'Tanca la trobada',
+    danger: true
+  }, async ()=>{
+    try{
+      await db.collection('events').doc(state.code).update({ closed: true });
+    }catch(e){
+      console.error("No s'ha pogut tancar la trobada:", e);
+    }
+  });
+}
+
+async function handleReopenEvent(){
+  try{
+    await db.collection('events').doc(state.code).update({ closed: false });
+  }catch(e){
+    console.error("No s'ha pogut reobrir la trobada:", e);
+  }
 }
 
 // Construeix un enllaç directe a la sala (paràmetre ?sala=CODI a l'URL
@@ -459,8 +572,10 @@ function handleCopy(){
 function handleLeave(){
   if (unsubParticipants) { unsubParticipants(); unsubParticipants=null; }
   if (unsubExpenses) { unsubExpenses(); unsubExpenses=null; }
+  if (unsubEventMeta) { unsubEventMeta(); unsubEventMeta=null; }
   state = {...state, screen:'landing', code:null, participants:[], expenses:[], myParticipantId:null,
-    myName:'', error:'', showAddParticipant:false, showExpenseForm:false, editingExpenseId:null};
+    myName:'', error:'', showAddParticipant:false, showExpenseForm:false, editingExpenseId:null,
+    closed:false, expensesAccordionOpen:false};
   render();
 }
 
@@ -470,6 +585,7 @@ function handleLeave(){
 function renderAddParticipantForm(){
   const container = document.getElementById('add-participant-container');
   if (!container) return;
+  if (state.closed){ container.innerHTML=''; return; }
   if (!state.showAddParticipant){
     container.innerHTML = `<button id="show-add-participant" class="add-toggle" style="margin-bottom:6px;">${icon('plus','#C0821E',16)} Afegeix un participant que no hi és</button>`;
     document.getElementById('show-add-participant').onclick = ()=>{ state.showAddParticipant=true; renderAddParticipantForm(); };
@@ -597,16 +713,24 @@ function renderExpenseForm(){
   };
 
   if (editing){
-    document.getElementById('e-delete').onclick = async ()=>{
-      const btn = document.getElementById('e-delete');
-      btn.disabled = true;
-      try{
-        await db.collection('events').doc(state.code).collection('expenses').doc(editing.id).delete();
-        state.showExpenseForm=false; state.editingExpenseId=null; renderExpenseForm();
-      }catch(e){
-        btn.disabled = false;
-        document.getElementById('e-error').innerHTML = `<p class="error-text" style="margin:8px 0 0;">No s'ha pogut eliminar. Torna-ho a provar.</p>`;
-      }
+    document.getElementById('e-delete').onclick = ()=>{
+      showConfirmDialog({
+        title: 'Eliminar aquesta despesa?',
+        message: `"${editing.concept}" (${euros(editing.amount)}) s'eliminarà i deixarà de comptar en el repartiment. Aquesta acció no es pot desfer.`,
+        confirmLabel: 'Elimina la despesa',
+        danger: true
+      }, async ()=>{
+        const btn = document.getElementById('e-delete');
+        if (btn) btn.disabled = true;
+        try{
+          await db.collection('events').doc(state.code).collection('expenses').doc(editing.id).delete();
+          state.showExpenseForm=false; state.editingExpenseId=null; renderExpenseForm();
+        }catch(e){
+          if (btn) btn.disabled = false;
+          const errEl2 = document.getElementById('e-error');
+          if (errEl2) errEl2.innerHTML = `<p class="error-text" style="margin:8px 0 0;">No s'ha pogut eliminar. Torna-ho a provar.</p>`;
+        }
+      });
     };
   }
 
@@ -678,7 +802,7 @@ function renderDynamicSections(){
         </div>
         <div class="prow-right">
           <div class="pamount font-mono">${euros((s.paidCents[p.id]||0)/100)}</div>
-          <button class="del-btn" data-id="${p.id}" title="Elimina participant">${icon('trash','#A8462F',16)}</button>
+          ${!state.closed ? `<button class="del-btn" data-id="${p.id}" title="Elimina participant">${icon('trash','#A8462F',16)}</button>` : ''}
         </div>
       </div>`).join('');
     participantsEl.querySelectorAll('.del-btn').forEach(btn=>{
@@ -712,7 +836,7 @@ function renderDynamicSections(){
             </div>
             <div class="prow-right">
               <div class="pamount font-mono">${euros(e.amount)}</div>
-              <button class="edit-expense-btn" data-id="${e.id}" title="Edita">${icon('pencil','#1F3A3D',14)} Edita</button>
+              ${!state.closed ? `<button class="edit-expense-btn" data-id="${e.id}" title="Edita">${icon('pencil','#1F3A3D',14)} Edita</button>` : ''}
             </div>
           </div>`;
       }).join('');
@@ -726,9 +850,11 @@ function renderDynamicSections(){
         </div>`;
     }).join('');
 
-    expensesEl.querySelectorAll('.edit-expense-btn').forEach(btn=>{
-      btn.onclick = ()=> openEditExpense(btn.getAttribute('data-id'));
-    });
+    if (!state.closed){
+      expensesEl.querySelectorAll('.edit-expense-btn').forEach(btn=>{
+        btn.onclick = ()=> openEditExpense(btn.getAttribute('data-id'));
+      });
+    }
   }
 
   if (participants.length === 0 && expenses.length === 0){
@@ -746,7 +872,7 @@ function renderDynamicSections(){
 
   settlementEl.innerHTML = `
     <div>
-      <h2 class="font-display" style="font-size:17px;font-weight:600;margin:18px 0 10px;">Repartiment</h2>
+      <h2 class="font-display" style="font-size:17px;font-weight:600;margin:18px 0 10px;">${state.closed ? 'Repartiment' : 'Repartiment provisional'}</h2>
       ${ s.transactions.length===0
         ? `<div class="ledger-card empty-state"><p>Tothom ha pagat la seva part justa. Res a repartir! ✅</p></div>`
         : s.transactions.map(t=>`
