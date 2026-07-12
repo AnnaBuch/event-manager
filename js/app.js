@@ -5,8 +5,8 @@
    esdeveniments ('app-event') que disparen els components.
    ========================================================================= */
 
-import * as fb from '/js/firebase-service.js';
-import { euros } from '/js/utils.js';
+import * as fb from '../js/firebase-service.js';
+import { euros } from '../js/utils.js';
 
 // Registra tots els components (custom elements) que l'app necessita.
 import '../components/setup-needed.js';
