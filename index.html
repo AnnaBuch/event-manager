@@ -3,21 +3,26 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1">
-<title>El compte de la família</title>
+<title>Separador savi</title>
 <style type="text/css">
   @import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,700&family=Inter:wght@400;500;600;700&display=swap');
   @import url('styles.css');
- </style>
+</style>
+
+<!-- Shoelace: components base i estils (temes clar + fosc) -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@shoelace-style/shoelace@2/cdn/themes/light.css" />
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@shoelace-style/shoelace@2/cdn/themes/dark.css" />
+<script type="module" src="https://cdn.jsdelivr.net/npm/@shoelace-style/shoelace@2/cdn/shoelace.js"></script>
 </head>
 <body>
 
 <div id="app-shell">
   <div class="header">
     <div class="header-title">
-      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#C0821E" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
-      <span class="font-display">El compte de la família</span>
+      <span class="font-display">Separador savi</span>
+      <theme-toggle></theme-toggle>
     </div>
-    <p>Qui ha pagat, qui representa a qui, i qui deu què a qui.</p>
+    <p>Qui ha pagat què i qui deu què</p>
   </div>
 
   <div id="root"></div>
@@ -27,6 +32,7 @@
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 
-<script src="./app.js"></script>
+<script type="module" src="./components/theme-toggle.js"></script>
+<script type="module" src="./js/app.js"></script>
 </body>
 </html>
