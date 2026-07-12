@@ -18,17 +18,6 @@
   --sage:var(--success);
   --rust:var(--danger);
 
-  /* Shoelace */
-  /* --sl-color-primary-50:#f6f8f3 !important; 
-  --sl-color-primary-100:#ebf0e4 !important;
-  --sl-color-primary-200:#d8e1ca !important;
-  --sl-color-primary-300:#c0cfaa !important;
-  --sl-color-primary-400:#a7bb89 !important;
-  --sl-color-primary-500:var(--primary);
-  --sl-color-primary-600:#6a7e57 !important;
-  --sl-color-primary-700:#566847 !important;
-  --sl-color-primary-800:#445238 !important;
-  --sl-color-primary-900:#343f2c !important; */
 
   --sl-color-success-500:var(--success) !important;
   --sl-color-warning-500:var(--warning) !important;
@@ -55,20 +44,11 @@
 
   --line:#3B434C;
 
-  --primary:#94AE78;
+  --primary:var(--sl-color-primary-500);
   --accent:#D3A063;
-
-  --success:#7EB48B;
-  --warning:#E2BB6B;
-  --danger:var(--sl-color-danger-500);
 
   --sage:var(--success);
   --rust:var(--danger);
-
-  --sl-color-primary-500:var(--primary);
-  --sl-color-success-500:var(--success);
-  --sl-color-warning-500:var(--warning);
-  --sl-color-danger-500:var(--danger);
 
   --sl-color-neutral-0:var(--card);
   --sl-color-neutral-50:var(--paper);
